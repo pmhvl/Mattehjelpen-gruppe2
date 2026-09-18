@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+foiler/forelesning_kort.html
+.quarto/
+KURSGUIDE.typ
