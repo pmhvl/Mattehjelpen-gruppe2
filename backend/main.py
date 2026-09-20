@@ -1,40 +1,38 @@
-"""MatteHjelpen – FastAPI-backend.
-
-SKJELETT: Bruk SYSTEMBESKRIVELSE.md som prompt og la en språkmodell hjelpe dere
-å fylle ut. Kravene:
-
-- POST /solve tar {"oppgave": "..."} og returnerer JSON med:
-  svar, steg (liste), formler_brukt, validert (bool), tokens_brukt, estimert_kostnad
-- GET / serverer frontend/index.html
-- God feilhåndtering: vis feil ærlig, ikke skjul dem.
-"""
+"""FastAPI hovedapplikasjon for MatteHjelpen."""
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from backend.llm_client import solve_task
+from backend.validator import validate
 
-app = FastAPI(title="MatteHjelpen")
+app = FastAPI(title="MatteHjelpen API")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-class Oppgave(BaseModel):
+class TaskRequest(BaseModel):
     oppgave: str
-
-
-@app.get("/")
-async def index():
-    return FileResponse("frontend/index.html")
-
+    use_tools: bool = True
 
 @app.post("/solve")
-async def solve(oppgave: Oppgave):
-    # TODO: Kall llm_client.solve_task(oppgave.oppgave)
-    # TODO: Valider svaret med validator.validate(...)
-    # TODO: Returner full respons iht. SYSTEMBESKRIVELSE.md
-    return {
-        "svar": "Ikke implementert ennå – se SYSTEMBESKRIVELSE.md",
-        "steg": [],
-        "formler_brukt": [],
-        "validert": False,
-        "tokens_brukt": 0,
-        "estimert_kostnad": 0.0,
-    }
+def solve(req: TaskRequest):
+    resultat = solve_task(req.oppgave, req.use_tools)
+    verktoy_kall = resultat.pop("_verktoy_kall", None)
+    validering = validate(req.oppgave, resultat.get("svar", ""), verktoy_kall)
+    resultat["validert"] = validering.get("validert", False)
+    resultat["valideringsdetaljer"] = validering.get("detaljer", "")
+    return resultat
+
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
+@app.get("/")
+def read_index():
+    return FileResponse("frontend/index.html")

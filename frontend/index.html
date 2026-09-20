@@ -1,61 +1,126 @@
 <!DOCTYPE html>
-<html lang="nb">
+<html lang="no">
 <head>
-  <meta charset="UTF-8">
-  <title>MatteHjelpen</title>
-  <!-- MathJax for LaTeX-rendering -->
-  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
-    textarea { width: 100%; height: 5rem; font-size: 1rem; }
-    button { font-size: 1rem; padding: 0.5rem 1.5rem; margin-top: 0.5rem; cursor: pointer; }
-    .validert-ok { color: green; font-weight: bold; }
-    .validert-feil { color: red; font-weight: bold; }
-    .kostnad { color: #666; font-size: 0.9rem; margin-top: 1rem; }
-    li { margin-bottom: 0.5rem; }
-  </style>
+    <meta charset="UTF-8">
+    <title>MatteHjelpen</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script>
+        // Modellen bruker ofte enkle $...$ for inline-matte, som MathJax IKKE
+        // tolker som matte som standard (kun \(...\) er på som standard der).
+        // Denne konfigurasjonen må lastes FØR MathJax-scriptet under.
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+        textarea { width: 100%; height: 100px; margin-bottom: 10px; font-size: 16px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        .box { border: 1px solid #ccc; padding: 15px; border-radius: 5px; margin-top: 15px; }
+        .valid { color: green; font-weight: bold; }
+        .invalid { color: red; font-weight: bold; }
+        #stegListe li { margin-bottom: 8px; white-space: pre-wrap; }
+        #svarTekst { white-space: pre-wrap; }
+    </style>
 </head>
 <body>
-  <h1>MatteHjelpen 🧮</h1>
-  <p>Skriv inn en matteoppgave (f.eks. «Løs y'' + 4y = 0» eller «Deriver x²·sin(x)»):</p>
-  <textarea id="oppgave" placeholder="Skriv oppgaven her..."></textarea>
-  <br>
-  <button onclick="los()">Løs</button>
+    <h1>MatteHjelpen 🧮</h1>
+    <p>Skriv inn en matteoppgave:</p>
+    <textarea id="oppgaveInput" placeholder="f.eks. Deriver x^3 * sin(x)"></textarea><br>
+    <button onclick="losOppgave()">Løs</button>
 
-  <div id="resultat" style="display:none">
-    <h2>Svar</h2>
-    <div id="svar"></div>
-    <h3>Stegvis løsning</h3>
-    <ol id="steg"></ol>
-    <h3>Formler brukt</h3>
-    <ul id="formler"></ul>
-    <p id="validering"></p>
-    <p class="kostnad" id="kostnad"></p>
-  </div>
+    <div id="resultatArea" style="display:none;" class="box">
+        <p id="status"></p>
+        <h2>Stegvis løsning</h2>
+        <ol id="stegListe"></ol>
 
-  <script>
-    async function los() {
-      const oppgave = document.getElementById('oppgave').value;
-      const res = await fetch('/solve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oppgave })
-      });
-      const data = await res.json();
+        <details>
+            <summary>Fullstendig svar fra modellen (rådata)</summary>
+            <div id="svarTekst"></div>
+        </details>
 
-      document.getElementById('resultat').style.display = 'block';
-      document.getElementById('svar').innerHTML = data.svar;
-      document.getElementById('steg').innerHTML =
-        data.steg.map(s => `<li>${s}</li>`).join('');
-      document.getElementById('formler').innerHTML =
-        data.formler_brukt.map(f => `<li>${f}</li>`).join('');
-      const v = document.getElementById('validering');
-      v.textContent = data.validert ? '✅ Svaret er numerisk validert' : '❌ Svaret kunne IKKE valideres – stol ikke blindt på det!';
-      v.className = data.validert ? 'validert-ok' : 'validert-feil';
-      document.getElementById('kostnad').textContent =
-        `Tokens brukt: ${data.tokens_brukt} · Estimert kostnad: $${data.estimert_kostnad}`;
-      MathJax.typeset();
-    }
-  </script>
+        <h3>Formler brukt</h3>
+        <ul id="formlerListe"></ul>
+
+        <div id="valideringStatus" style="margin-top: 15px;"></div>
+        <p style="color: #666; font-size: 0.9em; margin-top: 15px;">
+            Tokens brukt: <span id="tokensBrukt">0</span> · Estimert kostnad: $<span id="kostnad">0</span>
+        </p>
+    </div>
+
+    <script>
+        async function losOppgave() {
+            const oppgave = document.getElementById('oppgaveInput').value;
+            if (!oppgave) return;
+
+            document.getElementById('resultatArea').style.display = 'block';
+            const statusEl = document.getElementById('status');
+            statusEl.innerText = 'Tenker...';
+            statusEl.className = '';
+            document.getElementById('stegListe').innerHTML = '';
+            document.getElementById('svarTekst').innerText = '';
+
+            try {
+                const res = await fetch('/solve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ oppgave: oppgave, use_tools: true })
+                });
+                const data = await res.json();
+                statusEl.innerText = '';
+
+                // innerText (ikke innerHTML) – modellens svar er fritekst, ikke tiltrodd HTML.
+                document.getElementById('svarTekst').innerText = data.svar || '';
+
+                const stegOl = document.getElementById('stegListe');
+                stegOl.innerHTML = '';
+                if ((data.steg || []).length === 0 && data.svar) {
+                    // Ingen steg funnet – vis raw svar synlig (ofte en feilmelding fra API-et)
+                    // i stedet for å gjemme det i den sammenslåtte boksen.
+                    statusEl.innerText = '⚠️ ' + data.svar;
+                    statusEl.className = 'invalid';
+                }
+                (data.steg || []).forEach(s => {
+                    const li = document.createElement('li');
+                    li.innerText = s;
+                    stegOl.appendChild(li);
+                });
+
+                const formlerUl = document.getElementById('formlerListe');
+                formlerUl.innerHTML = '';
+                (data.formler_brukt || []).forEach(f => {
+                    const li = document.createElement('li');
+                    li.innerText = typeof f === 'string' ? f : `${f.id} – ${f.navn} (${f.referanse})`;
+                    formlerUl.appendChild(li);
+                });
+                if ((data.formler_brukt || []).length === 0) {
+                    const li = document.createElement('li');
+                    li.innerText = 'Ingen formler fra samlingen ble referert i svaret.';
+                    formlerUl.appendChild(li);
+                }
+
+                const valDiv = document.getElementById('valideringStatus');
+                if (data.validert) {
+                    valDiv.className = 'valid';
+                    valDiv.innerText = '✅ Svaret er numerisk validert med SymPy! ' + (data.valideringsdetaljer || '');
+                } else {
+                    valDiv.className = 'invalid';
+                    valDiv.innerText = '❌ Svaret kunne IKKE valideres – stol ikke blindt på det! ' + (data.valideringsdetaljer || '');
+                }
+
+                document.getElementById('tokensBrukt').innerText = data.tokens_brukt || 0;
+                document.getElementById('kostnad').innerText = data.estimert_kostnad || 0;
+
+                if (window.MathJax && MathJax.typesetPromise) { MathJax.typesetPromise(); }
+            } catch (e) {
+                statusEl.innerText = 'Feil ved tilkobling til server: ' + e;
+                statusEl.className = 'invalid';
+            }
+        }
+    </script>
 </body>
 </html>

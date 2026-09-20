@@ -1,13 +1,9 @@
-"""Deterministiske matteverktøy (SymPy) for MatteHjelpen.
+"""Deterministiske matteverktøy (SymPy) for MatteHjelpen."""
 
-PRINSIPP: Modellen resonnerer – verktøyet regner. En språkmodell skal ALDRI
-gjøre symbolsk/numerisk regning selv.
-"""
-
+import re
 import sympy as sp
 
 def derive(uttrykk: str, variabel: str = "x") -> dict:
-    """Deriver et uttrykk ved hjelp av SymPy."""
     try:
         var = sp.Symbol(variabel)
         expr = sp.sympify(uttrykk)
@@ -17,7 +13,6 @@ def derive(uttrykk: str, variabel: str = "x") -> dict:
         return {"error": f"Feil ved derivasjon: {str(e)}"}
 
 def integrate(uttrykk: str, variabel: str = "x") -> dict:
-    """Integrer et uttrykk ved hjelp av SymPy."""
     try:
         var = sp.Symbol(variabel)
         expr = sp.sympify(uttrykk)
@@ -27,7 +22,6 @@ def integrate(uttrykk: str, variabel: str = "x") -> dict:
         return {"error": f"Feil ved integrasjon: {str(e)}"}
 
 def solve_equation(ligning: str, variabel: str = "x") -> dict:
-    """Løs en ligning ved hjelp av SymPy."""
     try:
         var = sp.Symbol(variabel)
         if "=" in ligning:
@@ -41,26 +35,27 @@ def solve_equation(ligning: str, variabel: str = "x") -> dict:
         return {"error": f"Feil ved ligningsløsning: {str(e)}"}
 
 def solve_ode(ligning: str) -> dict:
-    """Løs en differensialligning ved hjelp av SymPy."""
     try:
         x = sp.Symbol('x')
-        y = sp.Function('y')(x)
-        
-        # Erstatt y'' og y' med SymPy-deriverte
-        eq_str = ligning.replace("y''", "sp.diff(y, x, 2)").replace("y'", "sp.diff(y, x)")
+        y = sp.Function('y')  # ikke-anvendt funksjon – kallbar som y(x)
+
+        # Støtt både y'/y''-notasjon og direkte SymPy-notasjon (y(x).diff(x, ...)).
+        eq_str = ligning.replace("y''", "y(x).diff(x, 2)").replace("y'", "y(x).diff(x)")
+        eq_str = re.sub(r"\by\b(?!\()", "y(x)", eq_str)
+
+        namespace = {"sp": sp, "x": x, "y": y}
         if "=" in eq_str:
-            v, h = eq_str.split("=")
-            eq = sp.Eq(eval(v, {"sp": sp, "x": x, "y": y}), eval(h, {"sp": sp, "x": x, "y": y}))
+            venstre, høyre = eq_str.split("=")
+            eq = sp.Eq(eval(venstre, namespace), eval(høyre, namespace))
         else:
-            eq = eval(eq_str, {"sp": sp, "x": x, "y": y})
-            
-        res = sp.dsolve(eq, y)
-        return {"resultat": str(res), "latex": sp.latex(res)}
+            eq = eval(eq_str, namespace)
+
+        res = sp.dsolve(eq, y(x))
+        return {"resultat": str(res.rhs if hasattr(res, 'rhs') else res), "latex": sp.latex(res)}
     except Exception as e:
         return {"error": f"Feil ved ODE-løsning: {str(e)}"}
 
-def matrix_op(operasjon: str, matrise: list) -> dict:
-    """Utfører matriseoperasjoner: determinant, invers, egenverdier."""
+def matrix_op(operasjon: str, matrise: list, vektor: list = None) -> dict:
     try:
         M = sp.Matrix(matrise)
         if operasjon == "determinant":
@@ -69,34 +64,53 @@ def matrix_op(operasjon: str, matrise: list) -> dict:
             res = M.inv()
         elif operasjon == "egenverdier":
             res = M.eigenvals()
+        elif operasjon == "løs":
+            if vektor is None:
+                return {"error": "Operasjonen 'løs' (Ax=b) krever argumentet 'vektor' (b)."}
+            res = M.solve(sp.Matrix(vektor))
         else:
             return {"error": f"Ukjent matriseoperasjon: {operasjon}"}
         return {"resultat": str(res), "latex": sp.latex(res)}
     except Exception as e:
         return {"error": f"Feil ved matriseoperasjon: {str(e)}"}
 
-def complex_op(operasjon: str, tall: str) -> dict:
-    """Utfører operasjoner på komplekse tall."""
+def complex_op(operasjon: str, tall: str, n: int = None) -> dict:
     try:
         z = sp.sympify(tall)
         if operasjon == "polar":
-            r, theta = sp.polar_lift(z)
-            res = f"r = {r}, theta = {theta}"
+            r = sp.Abs(z)
+            theta = sp.arg(z)
+            res = f"r = {r}, theta = {theta} (z = r*e^(i*theta))"
             latex_res = f"r = {sp.latex(r)}, \\theta = {sp.latex(theta)}"
         elif operasjon == "abs":
-            res = sp.Abs(z)
-            latex_res = sp.latex(res)
+            res = str(sp.Abs(z))
+            latex_res = sp.latex(sp.Abs(z))
         elif operasjon == "arg":
-            res = sp.arg(z)
-            latex_res = sp.latex(res)
+            res = str(sp.arg(z))
+            latex_res = sp.latex(sp.arg(z))
+        elif operasjon == "potens":
+            if n is None:
+                return {"error": "Operasjonen 'potens' krever heltallet 'n'."}
+            res_expr = sp.expand_complex(z**n)
+            res = str(res_expr)
+            latex_res = sp.latex(res_expr)
+        elif operasjon == "røtter":
+            if n is None:
+                return {"error": "Operasjonen 'røtter' krever heltallet 'n' (n-te røtter)."}
+            r = sp.Abs(z)
+            theta = sp.arg(z)
+            røtter = [
+                sp.simplify(r ** sp.Rational(1, n) * sp.exp(sp.I * (theta + 2 * sp.pi * k) / n))
+                for k in range(n)
+            ]
+            res = ", ".join(str(rt) for rt in røtter)
+            latex_res = ", \\quad ".join(sp.latex(rt) for rt in røtter)
         else:
-            return {"error": f"Ukjent kompleks operasjon: {operasjon}"}
-        return {"resultat": str(res), "latex": latex_res}
+            return {"error": f"Ukjent operasjon: {operasjon}"}
+        return {"resultat": res, "latex": latex_res}
     except Exception as e:
         return {"error": f"Feil ved kompleks operasjon: {str(e)}"}
 
-
-# Schema for function calling mot språkmodellen
 TOOL_DEFINITIONS = [
     {
         "type": "function",
@@ -106,8 +120,8 @@ TOOL_DEFINITIONS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "uttrykk": {"type": "string", "description": "Uttrykket som skal deriveres, f.eks. 'x**3 + 2*x'"},
-                    "variabel": {"type": "string", "description": "Variabelen det skal deriveres med hensyn på, standard er 'x'"}
+                    "uttrykk": {"type": "string", "description": "Uttrykket som skal deriveres"},
+                    "variabel": {"type": "string", "description": "Variabelen det skal deriveres mht."}
                 },
                 "required": ["uttrykk"]
             }
@@ -121,8 +135,8 @@ TOOL_DEFINITIONS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "uttrykk": {"type": "string", "description": "Uttrykket som skal integreres, f.eks. 'x**2'"},
-                    "variabel": {"type": "string", "description": "Variabelen det skal integreres med hensyn på, standard er 'x'"}
+                    "uttrykk": {"type": "string", "description": "Uttrykket som skal integreres"},
+                    "variabel": {"type": "string", "description": "Variabelen det skal integreres mht."}
                 },
                 "required": ["uttrykk"]
             }
@@ -136,8 +150,8 @@ TOOL_DEFINITIONS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "ligning": {"type": "string", "description": "Ligningen som skal løses, f.eks. 'x**2 - 4 = 0'"},
-                    "variabel": {"type": "string", "description": "Variabelen det skal løses for, standard er 'x'"}
+                    "ligning": {"type": "string", "description": "Ligningen som skal løses"},
+                    "variabel": {"type": "string", "description": "Variabelen det skal løses for"}
                 },
                 "required": ["ligning"]
             }
@@ -151,7 +165,7 @@ TOOL_DEFINITIONS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "ligning": {"type": "string", "description": "ODE-ligningen, f.eks. 'y' + y = 0'"}
+                    "ligning": {"type": "string", "description": "ODE-ligningen, f.eks. y' + y = 0"}
                 },
                 "required": ["ligning"]
             }
@@ -161,16 +175,13 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "matrix_op",
-            "description": "Utfør en operasjon på en matrise.",
+            "description": "Utfør en operasjon på en matrise. Bruk 'løs' for å løse et lineært ligningssystem Ax=b (krever 'vektor').",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "operasjon": {"type": "string", "enum": ["determinant", "invers", "egenverdier"]},
-                    "matrise": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "2D-liste/matrise, f.eks. [[1, 2], [3, 4]]"
-                    }
+                    "operasjon": {"type": "string", "enum": ["determinant", "invers", "egenverdier", "løs"]},
+                    "matrise": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}},
+                    "vektor": {"type": "array", "items": {"type": "number"}, "description": "Høyresiden b i Ax=b. Kun nødvendig for operasjonen 'løs'."}
                 },
                 "required": ["operasjon", "matrise"]
             }
@@ -180,12 +191,13 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "complex_op",
-            "description": "Utfør en operasjon på et komplekst tall.",
+            "description": "Utfør en operasjon på et komplekst tall: polarform/Eulers formel (polar), modulus (abs), argument (arg), potens (krever n) eller n-te røtter (røtter, krever n).",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "operasjon": {"type": "string", "enum": ["polar", "abs", "arg"]},
-                    "tall": {"type": "string", "description": "Komplekst tall som streng, f.eks. '1 + 1*I'"}
+                    "operasjon": {"type": "string", "enum": ["polar", "abs", "arg", "potens", "røtter"]},
+                    "tall": {"type": "string", "description": "Komplekst tall, f.eks. 1 + I"},
+                    "n": {"type": "integer", "description": "Eksponent (potens) eller antall røtter (røtter). Påkrevd for disse to operasjonene."}
                 },
                 "required": ["operasjon", "tall"]
             }
