@@ -72,11 +72,23 @@ def _valider_solve_ode(args, resultat_str, x, punkter):
     return ok, f"Satte løsningen inn i differensialligningen '{args['ligning']}' og sjekket at den blir ~0 i x = {punkter}."
 
 
+def _valider_matrix_op(args, resultat_str, x, punkter):
+    if args.get("operasjon") != "løs":
+        return False, f"Matriseoperasjonen '{args.get('operasjon')}' har ingen numerisk valideringsregel ennå – ikke bekreftet."
+    A = sp.Matrix(args["matrise"])
+    b = sp.Matrix(args["vektor"])
+    løsning = sp.sympify(resultat_str, locals={"Matrix": sp.Matrix})
+    avvik = [abs(complex(sp.N(v))) for v in (A * løsning - b)]
+    ok = all(a < 1e-6 for a in avvik)
+    return ok, f"Satte løsningen inn i Ax=b. Avvik: {[round(a, 8) for a in avvik]}."
+
+
 _VALIDATORER = {
     "derive": _valider_derive,
     "integrate": _valider_integrate,
     "solve_equation": _valider_solve_equation,
     "solve_ode": _valider_solve_ode,
+    "matrix_op": _valider_matrix_op,
 }
 
 

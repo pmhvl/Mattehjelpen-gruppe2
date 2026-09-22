@@ -122,8 +122,17 @@ def solve_task(oppgave: str, use_tools: bool = True) -> dict:
             messages.append(msg)
             for tool_call in msg.tool_calls:
                 func_name = tool_call.function.name
-                args = json.loads(tool_call.function.arguments)
-                tool_res = TOOL_MAP[func_name](**args)
+                try:
+                    args = json.loads(tool_call.function.arguments)
+                    if func_name not in TOOL_MAP:
+                        raise ValueError(f"Ukjent verktøy: {func_name}")
+                    tool_res = TOOL_MAP[func_name](**args)
+                except Exception as e:
+                    # Modellen kalte verktøyet feil (f.eks. galt parameternavn). Gi den
+                    # feilmeldingen tilbake i stedet for å la hele forespørselen krasje -
+                    # svake modeller kan da få sjansen til å korrigere seg selv.
+                    args = {}
+                    tool_res = {"error": f"Feil ved kall til {func_name}: {e}"}
                 if "resultat" in tool_res:
                     siste_verktoy = {"navn": func_name, "args": args, "resultat": tool_res["resultat"]}
                 messages.append({

@@ -31,6 +31,9 @@
     <h1>MatteHjelpen 🧮</h1>
     <p>Skriv inn en matteoppgave:</p>
     <textarea id="oppgaveInput" placeholder="f.eks. Deriver x^3 * sin(x)"></textarea><br>
+    <label style="display: inline-block; margin-bottom: 10px;">
+        <input type="checkbox" id="useTools" checked> Bruk verktøy (SymPy)
+    </label><br>
     <button onclick="losOppgave()">Løs</button>
 
     <div id="resultatArea" style="display:none;" class="box">
@@ -68,7 +71,7 @@
                 const res = await fetch('/solve', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ oppgave: oppgave, use_tools: true })
+                    body: JSON.stringify({ oppgave: oppgave, use_tools: document.getElementById('useTools').checked })
                 });
                 const data = await res.json();
                 statusEl.innerText = '';
