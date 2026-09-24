@@ -1,9 +1,11 @@
 # KI-bruk-logg
 
 Dokumenterer bruk av KI i arbeidet med MatteHjelpen, slik `OPPGAVE.md` krever
-("dokumentér bruken – hvilke modeller, til hva"). Denne økten er ført av
-Romina/romazcue. Andre gruppemedlemmer bør legge til egne økter under, med
-dato, verktøy/modell og hva som ble gjort.
+("dokumentér bruken – hvilke modeller, til hva"). Denne økten er ført i
+loggen av Romina/romazcue, men hele gruppa var med i sanntid gjennom økten,
+utførte testene sammen og skrev refleksjonene og notatene i fellesskap.
+Andre gruppemedlemmer bør legge til egne økter under, med dato, verktøy/modell
+og hva som ble gjort.
 
 ## Økt: retting av bugs i skjelett-implementasjonen
 
